@@ -1,0 +1,69 @@
+{% extends "base.html.j2" %}
+{% block title %}New Scan - VAPT Auditor{% endblock %}
+{% block content %}
+
+<section class="card">
+  <h1>Start a scan</h1>
+  <form action="/scans" method="post" enctype="multipart/form-data" id="scan-form">
+    <label for="target_type">Target type</label>
+    <select name="target_type" id="target_type" onchange="toggleFields()">
+      <option value="network">Network host / IP / CIDR (Nmap)</option>
+      <option value="web">Web application (Nuclei + Nikto + TLS)</option>
+      <option value="wordpress">WordPress site (Nuclei + Nikto + WPScan + TLS)</option>
+      <option value="mobile_apk">Mobile app - Android APK (static analysis)</option>
+    </select>
+
+    <div id="value-field">
+      <label for="target_value">Target</label>
+      <input type="text" name="target_value" id="target_value" placeholder="e.g. 10.0.1.5 or https://example.com">
+    </div>
+
+    <div id="file-field" style="display:none">
+      <label for="apk_file">APK file</label>
+      <input type="file" name="apk_file" id="apk_file" accept=".apk">
+    </div>
+
+    <label for="label">Label (optional)</label>
+    <input type="text" name="label" id="label" placeholder="e.g. Prod web server">
+
+    <label class="checkbox">
+      <input type="checkbox" name="authorized" value="yes" required>
+      I confirm I am authorized to test this target.
+    </label>
+
+    <button type="submit">Start scan</button>
+  </form>
+</section>
+
+<section class="card">
+  <h2>Recent scans</h2>
+  {% if jobs %}
+  <table class="job-table">
+    <tr><th>Target</th><th>Type</th><th>Status</th><th>Findings</th><th>Created</th><th></th></tr>
+    {% for job in jobs %}
+    <tr>
+      <td class="mono">{{ job.target.value if job.target.type.value != "mobile_apk" else (job.target.label or "APK upload") }}</td>
+      <td>{{ job.target.type.value }}</td>
+      <td><span class="status status-{{ job.status }}">{{ job.status }}</span></td>
+      <td>{{ job.findings|length }}</td>
+      <td>{{ job.created_at.strftime("%Y-%m-%d %H:%M") }}</td>
+      <td><a href="/scans/{{ job.id }}">view</a></td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <p class="muted">No scans yet.</p>
+  {% endif %}
+</section>
+
+<script>
+function toggleFields() {
+  const type = document.getElementById('target_type').value;
+  document.getElementById('value-field').style.display = type === 'mobile_apk' ? 'none' : 'block';
+  document.getElementById('file-field').style.display = type === 'mobile_apk' ? 'block' : 'none';
+  document.getElementById('target_value').required = type !== 'mobile_apk';
+  document.getElementById('apk_file').required = type === 'mobile_apk';
+}
+toggleFields();
+</script>
+{% endblock %}

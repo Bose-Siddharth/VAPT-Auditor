@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>VAPT Report - {{ job.target.value }}</title>
+<style>
+  :root {
+    --critical: #7a1220; --high: #b3261e; --medium: #b3610a;
+    --low: #8a7300; --info: #2f6f4f; --ink: #1c1f24; --muted: #5a6069;
+    --line: #e1e4e8; --bg-soft: #f6f7f9;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: "Helvetica Neue", Arial, sans-serif;
+    color: var(--ink); margin: 0; padding: 40px; line-height: 1.5; font-size: 13px;
+  }
+  h1 { font-size: 24px; margin-bottom: 4px; }
+  h2 { font-size: 17px; margin-top: 32px; border-bottom: 2px solid var(--line); padding-bottom: 6px; }
+  .subtitle { color: var(--muted); margin-top: 0; }
+  .meta-table { width: 100%; border-collapse: collapse; margin: 16px 0; }
+  .meta-table td { padding: 4px 8px; border-bottom: 1px solid var(--line); }
+  .meta-table td:first-child { color: var(--muted); width: 180px; }
+  .summary-grid { display: flex; gap: 10px; margin: 16px 0; flex-wrap: wrap; }
+  .badge {
+    flex: 1; min-width: 90px; border-radius: 8px; padding: 10px 14px;
+    color: #fff; text-align: center;
+  }
+  .badge .count { font-size: 22px; font-weight: 700; display: block; }
+  .badge .label { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
+  .badge.critical { background: var(--critical); }
+  .badge.high { background: var(--high); }
+  .badge.medium { background: var(--medium); }
+  .badge.low { background: var(--low); }
+  .badge.info { background: var(--info); }
+  .finding {
+    border: 1px solid var(--line); border-left-width: 6px; border-radius: 6px;
+    padding: 12px 16px; margin-bottom: 12px; page-break-inside: avoid; background: #fff;
+  }
+  .finding.critical { border-left-color: var(--critical); }
+  .finding.high { border-left-color: var(--high); }
+  .finding.medium { border-left-color: var(--medium); }
+  .finding.low { border-left-color: var(--low); }
+  .finding.info { border-left-color: var(--info); }
+  .finding-title { font-weight: 700; font-size: 14px; margin: 0 0 4px 0; }
+  .sev-tag {
+    display: inline-block; font-size: 10px; text-transform: uppercase; font-weight: 700;
+    padding: 2px 8px; border-radius: 10px; color: #fff; margin-right: 8px; vertical-align: middle;
+  }
+  .sev-tag.critical { background: var(--critical); }
+  .sev-tag.high { background: var(--high); }
+  .sev-tag.medium { background: var(--medium); }
+  .sev-tag.low { background: var(--low); }
+  .sev-tag.info { background: var(--info); }
+  .field { margin-top: 6px; }
+  .field-label { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .03em; }
+  .field-value { white-space: pre-wrap; word-break: break-word; }
+  code, .mono { font-family: "SF Mono", Menlo, Consolas, monospace; font-size: 12px; }
+  .tool-runs { background: var(--bg-soft); border-radius: 6px; padding: 10px 14px; font-size: 12px; }
+  .tool-runs table { width: 100%; border-collapse: collapse; }
+  .tool-runs td, .tool-runs th { text-align: left; padding: 4px 6px; border-bottom: 1px solid var(--line); }
+  .ok-yes { color: var(--info); font-weight: 700; }
+  .ok-no { color: var(--muted); }
+  .empty-state { color: var(--muted); font-style: italic; padding: 16px 0; }
+  footer { margin-top: 40px; color: var(--muted); font-size: 11px; border-top: 1px solid var(--line); padding-top: 10px; }
+</style>
+</head>
+<body>
+
+<h1>Vulnerability Assessment &amp; Penetration Testing Report</h1>
+<p class="subtitle">Target: <span class="mono">{{ job.target.value }}</span> &middot; Type: {{ job.target.type.value }}</p>
+
+<table class="meta-table">
+  <tr><td>Report generated</td><td>{{ job.finished_at }}</td></tr>
+  <tr><td>Scan job ID</td><td class="mono">{{ job.id }}</td></tr>
+  <tr><td>Target label</td><td>{{ job.target.label or "-" }}</td></tr>
+  <tr><td>Status</td><td>{{ job.status }}</td></tr>
+</table>
+
+<h2>Executive Summary</h2>
+<div class="summary-grid">
+  {% for sev in ["critical", "high", "medium", "low", "info"] %}
+  <div class="badge {{ sev }}">
+    <span class="count">{{ severity_counts[sev] }}</span>
+    <span class="label">{{ sev }}</span>
+  </div>
+  {% endfor %}
+</div>
+<p>
+  This assessment identified <strong>{{ findings|length }}</strong> finding(s) across the scanned target.
+  Findings are ordered by severity below; each includes evidence, the affected asset, and recommended
+  remediation. Automated tooling can produce false positives -- validate exploitability before
+  prioritizing remediation work.
+</p>
+
+<h2>Findings ({{ findings|length }})</h2>
+{% if findings %}
+  {% for f in findings %}
+  <div class="finding {{ f.severity.value }}">
+    <p class="finding-title">
+      <span class="sev-tag {{ f.severity.value }}">{{ f.severity.value }}</span>{{ f.title }}
+    </p>
+    <div class="field"><span class="field-label">Affected:</span> <span class="field-value mono">{{ f.affected or "-" }}</span></div>
+    <div class="field"><span class="field-label">Description:</span><div class="field-value">{{ f.description }}</div></div>
+    {% if f.evidence %}<div class="field"><span class="field-label">Evidence:</span><div class="field-value mono">{{ f.evidence }}</div></div>{% endif %}
+    {% if f.remediation %}<div class="field"><span class="field-label">Remediation:</span><div class="field-value">{{ f.remediation }}</div></div>{% endif %}
+    {% if f.reference %}<div class="field"><span class="field-label">Reference:</span> <span class="field-value">{{ f.reference }}</span></div>{% endif %}
+    <div class="field"><span class="field-label">Source:</span> {{ f.source_tool }}</div>
+  </div>
+  {% endfor %}
+{% else %}
+  <p class="empty-state">No findings were reported by any tool for this target.</p>
+{% endif %}
+
+<h2>Tool Execution Log</h2>
+<div class="tool-runs">
+<table>
+  <tr><th>Tool</th><th>OK</th><th>Started</th><th>Finished</th><th>Note</th></tr>
+  {% for run in job.tool_runs %}
+  <tr>
+    <td class="mono">{{ run.tool }}</td>
+    <td class="{{ 'ok-yes' if run.ok else 'ok-no' }}">{{ "yes" if run.ok else "no" }}</td>
+    <td>{{ run.started_at.strftime("%H:%M:%S") }}</td>
+    <td>{{ run.finished_at.strftime("%H:%M:%S") }}</td>
+    <td>{{ run.error or "-" }}</td>
+  </tr>
+  {% endfor %}
+</table>
+</div>
+
+<footer>
+  Generated by VAPT Auditor. Automated results only -- treat as a starting point for manual
+  verification, not a substitute for a licensed penetration test where compliance requires one.
+</footer>
+
+</body>
+</html>

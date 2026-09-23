@@ -1,0 +1,75 @@
+{% extends "base.html.j2" %}
+{% block title %}Scan {{ job.id[:8] }} - VAPT Auditor{% endblock %}
+{% block content %}
+
+<a href="/" class="back-link">&larr; back to scans</a>
+
+<section class="card">
+  <h1>Scan: <span class="mono">{{ job.target.value if job.target.type.value != "mobile_apk" else (job.target.label or "APK upload") }}</span></h1>
+  <p>
+    Type: {{ job.target.type.value }} &middot;
+    Status: <span class="status status-{{ job.status }}">{{ job.status }}</span>
+    {% if job.status == "running" %}<span class="muted">(this page auto-refreshes)</span>{% endif %}
+  </p>
+
+  {% if job.status == "completed" %}
+  <div class="actions">
+    <a class="button" href="/scans/{{ job.id }}/report.html" target="_blank">View full HTML report</a>
+    {% if pdf_ready %}
+    <a class="button" href="/scans/{{ job.id }}/report.pdf">Download PDF report</a>
+    {% else %}
+    <span class="muted">PDF not available on this deployment.</span>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  {% if job.error %}
+  <p class="error">Job error: {{ job.error }}</p>
+  {% endif %}
+</section>
+
+{% if job.status == "completed" %}
+<section class="card">
+  <h2>Summary</h2>
+  <div class="summary-grid">
+    {% for sev in ["critical", "high", "medium", "low", "info"] %}
+    <div class="badge badge-{{ sev }}">
+      <span class="count">{{ severity_counts[sev] }}</span>
+      <span class="label">{{ sev }}</span>
+    </div>
+    {% endfor %}
+  </div>
+</section>
+
+<section class="card">
+  <h2>Findings ({{ findings|length }})</h2>
+  {% for f in findings %}
+  <div class="finding finding-{{ f.severity.value }}">
+    <p class="finding-title"><span class="sev-tag sev-{{ f.severity.value }}">{{ f.severity.value }}</span>{{ f.title }}</p>
+    <p class="mono small">{{ f.affected or "" }}</p>
+    <p>{{ f.description }}</p>
+  </div>
+  {% else %}
+  <p class="muted">No findings.</p>
+  {% endfor %}
+</section>
+{% endif %}
+
+<section class="card">
+  <h2>Tool execution log</h2>
+  <table class="job-table">
+    <tr><th>Tool</th><th>OK</th><th>Note</th></tr>
+    {% for run in job.tool_runs %}
+    <tr>
+      <td class="mono">{{ run.tool }}</td>
+      <td>{{ "yes" if run.ok else "no" }}</td>
+      <td>{{ run.error or "-" }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+</section>
+
+{% if job.status in ("pending", "running") %}
+<script>setTimeout(() => location.reload(), 4000);</script>
+{% endif %}
+{% endblock %}
