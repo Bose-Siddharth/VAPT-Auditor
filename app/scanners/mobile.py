@@ -66,6 +66,31 @@ def scan(apk_path: str, timeout: int = 300) -> tuple[list[Finding], ToolRunResul
 
     package = apk.get_package() or apk_path
 
+    try:
+        _analyze(apk, package, findings)
+    except Exception as exc:
+        finished = datetime.now(timezone.utc)
+        return findings, ToolRunResult(
+            tool="androguard",
+            command=f"androguard static analysis on {apk_path}",
+            started_at=started,
+            finished_at=finished,
+            ok=False,
+            error=f"static analysis raised {type(exc).__name__}: {exc} "
+                  f"(partial results, if any, are still included above)",
+        )
+
+    finished = datetime.now(timezone.utc)
+    return findings, ToolRunResult(
+        tool="androguard",
+        command=f"androguard static analysis on {apk_path}",
+        started_at=started,
+        finished_at=finished,
+        ok=True,
+    )
+
+
+def _analyze(apk, package: str, findings: list[Finding]) -> None:
     if apk.get_effective_target_sdk_version() and int(apk.get_effective_target_sdk_version()) < 29:
         findings.append(Finding(
             category=TargetType.MOBILE_APK,
@@ -78,7 +103,7 @@ def scan(apk_path: str, timeout: int = 300) -> tuple[list[Finding], ToolRunResul
             remediation="Raise targetSdkVersion to a current, supported API level.",
         ))
 
-    if apk.is_debuggable():
+    if apk.get_attribute_value("application", "debuggable") == "true":
         findings.append(Finding(
             category=TargetType.MOBILE_APK,
             source_tool="androguard",
@@ -149,15 +174,6 @@ def scan(apk_path: str, timeout: int = 300) -> tuple[list[Finding], ToolRunResul
                 ))
 
     findings.extend(_scan_strings_for_secrets(apk, package))
-
-    finished = datetime.now(timezone.utc)
-    return findings, ToolRunResult(
-        tool="androguard",
-        command=f"androguard static analysis on {apk_path}",
-        started_at=started,
-        finished_at=finished,
-        ok=True,
-    )
 
 
 def _scan_strings_for_secrets(apk, package: str) -> list[Finding]:

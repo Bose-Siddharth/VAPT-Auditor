@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import tempfile
 from pathlib import Path
 
 from app.models import ScanJob
@@ -13,14 +14,32 @@ JOBS_DIR = DATA_DIR / "jobs"
 def save_job(job: ScanJob) -> None:
     JOBS_DIR.mkdir(parents=True, exist_ok=True)
     path = JOBS_DIR / f"{job.id}.json"
-    path.write_text(job.model_dump_json(indent=2))
+    # Write to a temp file and rename atomically so a concurrent reader (e.g.
+    # a browser polling /scans/{job_id} while a background task is mid-write)
+    # never observes a truncated/partial JSON file.
+    fd, tmp_path = tempfile.mkstemp(dir=JOBS_DIR, prefix=f".{job.id}.", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w") as f:
+            f.write(job.model_dump_json(indent=2))
+        os.replace(tmp_path, path)
+    except BaseException:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        raise
 
 
 def load_job(job_id: str) -> ScanJob | None:
     path = JOBS_DIR / f"{job_id}.json"
     if not path.exists():
         return None
-    return ScanJob.model_validate_json(path.read_text())
+    try:
+        return ScanJob.model_validate_json(path.read_text())
+    except Exception:
+        # Most likely a read racing an in-progress atomic write; the caller
+        # treats this the same as "not found yet" rather than a hard error.
+        return None
 
 
 def list_jobs() -> list[ScanJob]:

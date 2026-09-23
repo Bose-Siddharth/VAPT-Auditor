@@ -31,15 +31,15 @@ def write_html(job: ScanJob, out_path: Path) -> Path:
 
 
 def write_pdf(job: ScanJob, out_path: Path) -> Path | None:
-    """Best-effort PDF export. Returns None (with no error) if WeasyPrint isn't
-    installed/usable in this environment -- the HTML report is always the
-    source of truth and stays available regardless."""
+    """Best-effort PDF export. Returns None if WeasyPrint isn't installed, or
+    if rendering fails for any other reason (missing native libs at runtime,
+    a font issue, ...) -- the HTML report is always the source of truth and
+    stays available regardless."""
     try:
         from weasyprint import HTML
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        html_str = render_html(job)
+        HTML(string=html_str, base_url=str(TEMPLATE_DIR)).write_pdf(str(out_path))
+        return out_path
     except Exception:
         return None
-
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    html_str = render_html(job)
-    HTML(string=html_str, base_url=str(TEMPLATE_DIR)).write_pdf(str(out_path))
-    return out_path

@@ -21,6 +21,7 @@ BASE_DIR = Path(__file__).parent
 DATA_DIR = Path(os.environ.get("VAPT_DATA_DIR", "data"))
 UPLOAD_DIR = Path(os.environ.get("VAPT_UPLOAD_DIR", "uploads"))
 REPORTS_DIR = DATA_DIR / "reports"
+MAX_APK_BYTES = 500 * 1024 * 1024  # 500MB: generous for an APK, bounds memory/disk use
 
 app = FastAPI(title="VAPT Auditor")
 templates = Jinja2Templates(directory=str(BASE_DIR / "web_ui" / "templates"))
@@ -44,6 +45,20 @@ def _validate_network_target(value: str) -> str:
     if HOSTNAME_RE.match(value):
         return value
     raise HTTPException(400, "Target must be a valid IP, CIDR range, or hostname.")
+
+
+def _save_upload_capped(upload: UploadFile, dest: Path, max_bytes: int) -> None:
+    """Stream the upload to disk in chunks instead of reading it all into
+    memory, and abort with 413 if it exceeds max_bytes."""
+    written = 0
+    with open(dest, "wb") as f:
+        while chunk := upload.file.read(1024 * 1024):
+            written += len(chunk)
+            if written > max_bytes:
+                f.close()
+                dest.unlink(missing_ok=True)
+                raise HTTPException(413, f"Upload exceeds the {max_bytes // (1024 * 1024)}MB limit.")
+            f.write(chunk)
 
 
 def _validate_url_target(value: str) -> str:
@@ -84,9 +99,12 @@ def create_scan(
     elif ttype == TargetType.MOBILE_APK:
         if not apk_file or not apk_file.filename.lower().endswith(".apk"):
             raise HTTPException(400, "Upload a .apk file for mobile scans.")
+        # Strip any path components from the client-supplied filename so it
+        # can't be used to write outside UPLOAD_DIR (e.g. "../../etc/x.apk").
+        safe_name = os.path.basename(apk_file.filename) or "upload.apk"
         UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
-        dest = UPLOAD_DIR / f"{uuid.uuid4().hex}_{apk_file.filename}"
-        dest.write_bytes(apk_file.file.read())
+        dest = UPLOAD_DIR / f"{uuid.uuid4().hex}_{safe_name}"
+        _save_upload_capped(apk_file, dest, max_bytes=MAX_APK_BYTES)
         value = str(dest)
     else:  # pragma: no cover
         raise HTTPException(400, "Unsupported target type.")
@@ -114,8 +132,13 @@ def _execute_job(job_id: str) -> None:
     finally:
         job.finished_at = datetime.now(timezone.utc)
         storage.save_job(job)
-        report_generate.write_html(job, REPORTS_DIR / f"{job.id}.html")
-        report_generate.write_pdf(job, REPORTS_DIR / f"{job.id}.pdf")
+        try:
+            report_generate.write_html(job, REPORTS_DIR / f"{job.id}.html")
+            report_generate.write_pdf(job, REPORTS_DIR / f"{job.id}.pdf")
+        except Exception:
+            # Job status/findings are already saved above regardless; report
+            # rendering is best-effort on top of that, not load-bearing.
+            pass
 
 
 @app.get("/scans/{job_id}", response_class=HTMLResponse)

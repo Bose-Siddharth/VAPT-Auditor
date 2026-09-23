@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import json
+import os
+import tempfile
 
 from app.models import Finding, Severity, TargetType, ToolRunResult
 from app.scanners.base import run_command
@@ -71,29 +73,48 @@ NIKTO_SEVERITY_DEFAULT = Severity.MEDIUM
 
 
 def scan_nikto(url: str, timeout: int = 900) -> tuple[list[Finding], ToolRunResult]:
-    args = ["nikto", "-h", url, "-Format", "json", "-output", "-", "-ask", "no"]
-    result, stdout = run_command("nikto", args, timeout=timeout)
-    findings: list[Finding] = []
-    if not stdout.strip():
-        return findings, result
-
+    # `-output -` does not reliably emit JSON to stdout; write to a real file instead.
+    fd, out_path = tempfile.mkstemp(suffix=".json", prefix="nikto_")
+    os.close(fd)
     try:
-        data = json.loads(stdout)
-    except json.JSONDecodeError:
+        args = ["nikto", "-h", url, "-Format", "json", "-output", out_path, "-ask", "no"]
+        result, _ = run_command("nikto", args, timeout=timeout)
+        findings: list[Finding] = []
+
+        try:
+            with open(out_path) as f:
+                raw = f.read()
+        except OSError:
+            return findings, result
+
+        if not raw.strip():
+            return findings, result
+
+        try:
+            data = json.loads(raw)
+        except json.JSONDecodeError:
+            return findings, result
+
+        # Real nikto -Format json output is a top-level array of per-host
+        # objects, each carrying its own "vulnerabilities" list.
+        hosts = data if isinstance(data, list) else [data] if isinstance(data, dict) else []
+        for host_result in hosts:
+            for vuln in host_result.get("vulnerabilities", []):
+                findings.append(Finding(
+                    category=TargetType.WEB,
+                    source_tool="nikto",
+                    severity=NIKTO_SEVERITY_DEFAULT,
+                    title=vuln.get("msg", "Nikto finding")[:200],
+                    description=vuln.get("msg", ""),
+                    evidence=vuln.get("url"),
+                    affected=url,
+                    reference=vuln.get("references") or None,
+                    remediation="Review the flagged path/header and reconfigure or patch the web server accordingly.",
+                ))
+
         return findings, result
-
-    vulnerabilities = data.get("vulnerabilities", []) if isinstance(data, dict) else []
-    for vuln in vulnerabilities:
-        findings.append(Finding(
-            category=TargetType.WEB,
-            source_tool="nikto",
-            severity=NIKTO_SEVERITY_DEFAULT,
-            title=vuln.get("msg", "Nikto finding")[:200],
-            description=vuln.get("msg", ""),
-            evidence=vuln.get("url"),
-            affected=url,
-            reference=vuln.get("references"),
-            remediation="Review the flagged path/header and reconfigure or patch the web server accordingly.",
-        ))
-
-    return findings, result
+    finally:
+        try:
+            os.unlink(out_path)
+        except OSError:
+            pass

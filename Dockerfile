@@ -3,10 +3,18 @@ FROM python:3.11-slim-bookworm
 ENV DEBIAN_FRONTEND=noninteractive \
     PIP_NO_CACHE_DIR=1
 
-# --- OS packages: nmap, nikto, ruby (for wpscan), weasyprint's native deps ---
+# --- OS packages: nmap, ruby (for wpscan), perl (for nikto), weasyprint's native deps ---
+# Nikto isn't packaged for Debian bookworm's default repos, so it's pulled
+# from source below instead (it's a plain Perl script, no build step needed).
 RUN apt-get update && apt-get install -y --no-install-recommends \
     nmap \
-    nikto \
+    perl \
+    libnet-ssleay-perl \
+    libxml-writer-perl \
+    libjson-perl \
+    bsdextrautils \
+    procps \
+    bind9-dnsutils \
     ruby-full \
     build-essential \
     libcurl4-openssl-dev \
@@ -29,6 +37,11 @@ RUN gem install wpscan --no-document
 RUN git clone --depth 1 https://github.com/drwetter/testssl.sh.git /opt/testssl.sh \
     && ln -s /opt/testssl.sh/testssl.sh /usr/local/bin/testssl.sh \
     && chmod +x /usr/local/bin/testssl.sh
+
+# --- nikto (source checkout, no Debian package available) ---
+RUN git clone --depth 1 https://github.com/sullo/nikto.git /opt/nikto \
+    && printf '#!/bin/sh\nexec perl /opt/nikto/program/nikto.pl "$@"\n' > /usr/local/bin/nikto \
+    && chmod +x /usr/local/bin/nikto
 
 # --- nuclei (prebuilt Go binary) ---
 ARG NUCLEI_VERSION=3.3.9
