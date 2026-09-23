@@ -7,7 +7,7 @@ services:
     # behind your existing internal nginx / VPN if you need remote access,
     # rather than publishing this port directly.
     ports:
-      - "127.0.0.1:8000:8000"
+      - "8000:8000"
     environment:
       # Set these to control the seeded admin account (created once, on
       # first boot, if data/users.json doesn't exist yet). If left unset,
