@@ -85,7 +85,7 @@ real scan isn't slow.
 3. Download the HTML or PDF report from the job page. Reports are also kept under
    `data/reports/<job-id>.{html,pdf}` on disk.
 
-## Local development
+## Local development...
 
 ```bash
 python3.11 -m venv .venv && source .venv/bin/activate
