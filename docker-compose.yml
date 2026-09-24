@@ -3,16 +3,15 @@ services:
     build: .
     container_name: vapt-auditor
     restart: unless-stopped
-    # Bound to localhost only: this tool is NOT meant to be public. Put it
-    # behind your existing internal nginx / VPN if you need remote access,
-    # rather than publishing this port directly.
+    # Published on all interfaces, port 8080 -- and login auth is currently
+    # disabled app-wide (see README "Access control"). Anyone who can reach
+    # this port can use the scanner with no login. If that's not intended,
+    # bind to "127.0.0.1:8080:8000" instead and put a reverse proxy/VPN in
+    # front, or re-enable auth.
     ports:
       - "8080:8000"
     environment:
-      # Set these to control the seeded admin account (created once, on
-      # first boot, if data/users.json doesn't exist yet). If left unset,
-      # a random password is generated and printed to the container logs
-      # plus saved to data/INITIAL_CREDENTIALS.txt.
+      # Inert while auth is disabled -- see README "Access control".
       - VAPT_ADMIN_USER=${VAPT_ADMIN_USER:-admin}
       - VAPT_ADMIN_PASSWORD=${VAPT_ADMIN_PASSWORD:-password}
       # Optional: enables CVE-level WordPress plugin/theme lookups.

@@ -48,10 +48,12 @@ authorized to test that target. If this is reachable from the public internet (a
 opposed to only your internal network/VPN), treat that as a real risk, not a
 theoretical one.
 
-The `docker-compose.yml` still binds the container port to `127.0.0.1` on the host —
-so whatever is making `vapt-auditor.iema.co` reachable (Cloudflare Tunnel, an nginx
-reverse proxy, etc.) is now the *only* thing standing between the open internet and
-an unauthenticated active scanner. Worth double-checking that path is what you intend.
+`docker-compose.yml` publishes port `8080` on all interfaces (not just localhost),
+so on a host with a public IP or behind a tunnel (e.g. `vapt-auditor.iema.co`),
+this app is directly reachable from the open internet with no login at all.
+There is nothing else standing between the public internet and an unauthenticated
+active scanner. If that's not what you intend, change the `ports:` line to
+`"127.0.0.1:8080:8000"` and put a reverse proxy/VPN in front instead.
 
 HTTP Basic Auth is still fully implemented (`app/auth.py`, PBKDF2-hashed user store)
 and just not wired into `app/main.py` anymore. To turn it back on:
@@ -72,14 +74,15 @@ Prereqs: Docker + Docker Compose on the target host.
 git clone <this repo>   # or scp the directory over
 cd vapt-auditor
 cp .env.example .env
-# edit .env: optionally set VAPT_ADMIN_USER / VAPT_ADMIN_PASSWORD,
-# and WPSCAN_API_TOKEN (free at https://wpscan.com/api) for CVE-level WordPress results
+# edit .env: set WPSCAN_API_TOKEN (free at https://wpscan.com/api) for CVE-level
+# WordPress results. VAPT_ADMIN_* is inert while auth is disabled -- see below.
 docker compose up -d --build
-docker compose logs -f vapt-auditor   # first boot prints the admin password here
 ```
 
-Then open `http://<host>:8000` from a machine that can reach `127.0.0.1` on that
-host (SSH tunnel, internal network, or your reverse proxy).
+Then open `http://<host>:8080` -- it's published on all interfaces, so this works
+from anywhere that can reach the host directly, no tunnel needed. (Login auth is
+currently disabled; see "Access control" above before exposing this beyond a
+trusted network.)
 
 First image build takes a while — it installs Nmap, Nikto, Ruby+WPScan, testssl.sh,
 and downloads the full Nuclei template set (~thousands of templates) so the first
@@ -87,7 +90,7 @@ real scan isn't slow.
 
 ## Using it
 
-1. Log in, pick a target type, enter the target (or upload an APK), check the
+1. Pick a target type, enter the target (or upload an APK), check the
    authorization box, submit.
 2. The scan runs in the background; the job page auto-refreshes until it's done.
 3. Download the HTML or PDF report from the job page. Reports are also kept under
