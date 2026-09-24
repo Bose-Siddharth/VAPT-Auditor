@@ -40,21 +40,29 @@ requirements (PCI-DSS, SOC 2, etc.) that mandate a licensed penetration test.
 
 ## Access control
 
-This is **not public**. Every route requires HTTP Basic Auth against a small local
-user list (`data/users.json`, PBKDF2-hashed, never plaintext).
+**Auth is currently disabled — every route is open to anyone who can reach the app,
+with no login.** This was a deliberate choice made after weighing it against login
+friction; it means anyone with the URL can launch active scans (Nmap/Nuclei/Nikto)
+against any target they type in, or upload files, with no check that they're
+authorized to test that target. If this is reachable from the public internet (as
+opposed to only your internal network/VPN), treat that as a real risk, not a
+theoretical one.
 
-- On first boot, one admin account is seeded automatically — random password if you
-  don't set one — and printed to the container logs plus saved to
-  `data/INITIAL_CREDENTIALS.txt` (delete that file after you've copied the password out).
-- Add more limited accounts:
-  ```
-  docker compose exec vapt-auditor python -m scripts.manage_users add alice <password>
-  docker compose exec vapt-auditor python -m scripts.manage_users list
-  docker compose exec vapt-auditor python -m scripts.manage_users remove alice
-  ```
-- The `docker-compose.yml` binds the port to `127.0.0.1` only, on purpose — reachable
-  from the host but not the open internet. If your team needs remote access, put it
-  behind your existing internal nginx (with TLS) or a VPN, not a public port mapping.
+The `docker-compose.yml` still binds the container port to `127.0.0.1` on the host —
+so whatever is making `vapt-auditor.iema.co` reachable (Cloudflare Tunnel, an nginx
+reverse proxy, etc.) is now the *only* thing standing between the open internet and
+an unauthenticated active scanner. Worth double-checking that path is what you intend.
+
+HTTP Basic Auth is still fully implemented (`app/auth.py`, PBKDF2-hashed user store)
+and just not wired into `app/main.py` anymore. To turn it back on:
+1. In `app/main.py`, re-add `from app import auth` and `user: str = Depends(auth.verify_credentials)`
+   to each route, and restore the `@app.on_event("startup")` call to `auth.seed_default_admin_if_needed()`.
+2. Manage accounts the same way as before:
+   ```
+   docker compose exec vapt-auditor python -m scripts.manage_users add alice <password>
+   docker compose exec vapt-auditor python -m scripts.manage_users list
+   docker compose exec vapt-auditor python -m scripts.manage_users remove alice
+   ```
 
 ## Deploying to your private cloud
 

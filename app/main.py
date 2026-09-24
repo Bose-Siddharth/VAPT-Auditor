@@ -6,13 +6,13 @@ import re
 import uuid
 from pathlib import Path
 
-from fastapi import BackgroundTasks, Depends, FastAPI, Form, HTTPException, Request, UploadFile
+from fastapi import BackgroundTasks, FastAPI, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from datetime import datetime, timezone
 
-from app import auth, storage
+from app import storage
 from app.models import ScanJob, Target, TargetType
 from app.orchestrator import run_job
 from app.report import generate as report_generate
@@ -28,11 +28,6 @@ templates = Jinja2Templates(directory=str(BASE_DIR / "web_ui" / "templates"))
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "web_ui" / "static")), name="static")
 
 HOSTNAME_RE = re.compile(r"^[a-zA-Z0-9]([a-zA-Z0-9\-\.]{0,253}[a-zA-Z0-9])?$")
-
-
-@app.on_event("startup")
-def on_startup() -> None:
-    auth.seed_default_admin_if_needed()
 
 
 def _validate_network_target(value: str) -> str:
@@ -69,9 +64,9 @@ def _validate_url_target(value: str) -> str:
 
 
 @app.get("/", response_class=HTMLResponse)
-def index(request: Request, user: str = Depends(auth.verify_credentials)):
+def index(request: Request):
     jobs = storage.list_jobs()[:25]
-    return templates.TemplateResponse("index.html.j2", {"request": request, "jobs": jobs, "user": user})
+    return templates.TemplateResponse("index.html.j2", {"request": request, "jobs": jobs})
 
 
 @app.post("/scans")
@@ -82,7 +77,6 @@ def create_scan(
     label: str = Form(""),
     authorized: str = Form(""),
     apk_file: UploadFile | None = None,
-    user: str = Depends(auth.verify_credentials),
 ):
     if authorized != "yes":
         raise HTTPException(400, "You must confirm you are authorized to test this target.")
@@ -142,20 +136,20 @@ def _execute_job(job_id: str) -> None:
 
 
 @app.get("/scans/{job_id}", response_class=HTMLResponse)
-def scan_status(request: Request, job_id: str, user: str = Depends(auth.verify_credentials)):
+def scan_status(request: Request, job_id: str):
     job = storage.load_job(job_id)
     if job is None:
         raise HTTPException(404, "Job not found.")
     pdf_ready = (REPORTS_DIR / f"{job_id}.pdf").exists()
     return templates.TemplateResponse(
         "job.html.j2",
-        {"request": request, "job": job, "user": user, "pdf_ready": pdf_ready,
+        {"request": request, "job": job, "pdf_ready": pdf_ready,
          "severity_counts": job.severity_counts(), "findings": job.sorted_findings()},
     )
 
 
 @app.get("/scans/{job_id}/report.html", response_class=HTMLResponse)
-def scan_report_html(job_id: str, user: str = Depends(auth.verify_credentials)):
+def scan_report_html(job_id: str):
     path = REPORTS_DIR / f"{job_id}.html"
     if not path.exists():
         raise HTTPException(404, "Report not ready yet.")
@@ -163,7 +157,7 @@ def scan_report_html(job_id: str, user: str = Depends(auth.verify_credentials)):
 
 
 @app.get("/scans/{job_id}/report.pdf")
-def scan_report_pdf(job_id: str, user: str = Depends(auth.verify_credentials)):
+def scan_report_pdf(job_id: str):
     path = REPORTS_DIR / f"{job_id}.pdf"
     if not path.exists():
         raise HTTPException(404, "PDF report not available (WeasyPrint may be missing, or scan still running).")
