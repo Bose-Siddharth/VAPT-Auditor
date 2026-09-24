@@ -7,14 +7,14 @@ services:
     # behind your existing internal nginx / VPN if you need remote access,
     # rather than publishing this port directly.
     ports:
-      - "127.0.0.1:8000:8000"
+      - "8080:8000"
     environment:
       # Set these to control the seeded admin account (created once, on
       # first boot, if data/users.json doesn't exist yet). If left unset,
       # a random password is generated and printed to the container logs
       # plus saved to data/INITIAL_CREDENTIALS.txt.
       - VAPT_ADMIN_USER=${VAPT_ADMIN_USER:-admin}
-      - VAPT_ADMIN_PASSWORD=${VAPT_ADMIN_PASSWORD:-}
+      - VAPT_ADMIN_PASSWORD=${VAPT_ADMIN_PASSWORD:-password}
       # Optional: enables CVE-level WordPress plugin/theme lookups.
       - WPSCAN_API_TOKEN=${WPSCAN_API_TOKEN:-}
     volumes:
